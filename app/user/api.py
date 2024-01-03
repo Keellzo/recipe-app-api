@@ -1,15 +1,47 @@
 # user/api.py
 
 from typing import List
+
+from django.contrib.auth.models import AnonymousUser
 from ninja import NinjaAPI, Schema
 from ninja.errors import HttpError
+from ninja.security import HttpBearer
 from ninja.responses import Response
 from django.contrib.auth import authenticate, get_user_model
 from pydantic import Field
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework_simplejwt.tokens import RefreshToken
+import jwt
+from datetime import datetime, timedelta
+from django.conf import settings
 
 api = NinjaAPI(version='1.0.0', urls_namespace='user')
+
+
+# Utility Functions for JWT
+def create_jwt_token(user_id):
+    payload = {
+        'user_id': user_id,
+        'exp': datetime.utcnow() + timedelta(minutes=30)
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
+
+
+def decode_jwt_token(token):
+    try:
+        return jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+
+# Custom JWT Authentication class
+class JWTAuth(HttpBearer):
+    def authenticate(self, request, token):
+        decoded_token = decode_jwt_token(token)
+        if decoded_token:
+            user_id = decoded_token.get('user_id')
+            return get_user_model().objects.filter(id=user_id).first()
+        return None
 
 
 # Pydantic schemas for request and response data structures
@@ -29,7 +61,6 @@ class UserOutSchema(Schema):
 class TokenOutSchema(Schema):
     """Schema for JWT token output."""
     access: str
-    refresh: str
 
 
 class TokenCreateSchema(Schema):
@@ -50,16 +81,11 @@ class UserPasswordUpdateSchema(Schema):
 
 @api.post("/token", response=TokenOutSchema, auth=None)
 def create_token(request, payload: TokenCreateSchema):
-    """
-    Endpoint for creating a JWT token.
-    Authenticates the user and generates a token upon successful authentication.
-    """
-    user = authenticate(request, username=payload.email, password=payload.password)
-    if user is not None:
-        refresh = RefreshToken.for_user(user)
-        return {'refresh': str(refresh), 'access': str(refresh.access_token)}
-    else:
-        return Response({"detail": "Invalid credentials"}, status=400)
+    user = authenticate(username=payload.email, password=payload.password)
+    if user:
+        token = create_jwt_token(user.id)
+        return {'access': token}
+    return Response({"detail": "Invalid credentials"}, status=400)
 
 
 @api.post("/users", response=UserOutSchema)
@@ -77,8 +103,8 @@ def create_user(request, user_in: UserCreateSchema):
     return Response(user_data.dict(), status=201)
 
 
-@api.get("/users", response=List[UserOutSchema])
-def list_users():
+@api.get("/users", response=List[UserOutSchema], auth=JWTAuth())
+def list_users(request):
     """
     Endpoint to retrieve a list of users.
     Returns a list of all users in the system.
@@ -87,7 +113,7 @@ def list_users():
     return users
 
 
-@api.patch("/users/{user_id}", response=UserOutSchema)
+@api.patch("/users/{user_id}", response=UserOutSchema, auth=JWTAuth())
 def update_user_name(request, user_id: int, data: UserUpdateSchema):
     """
     Endpoint to update a user's name.
@@ -102,7 +128,7 @@ def update_user_name(request, user_id: int, data: UserUpdateSchema):
         return Response({"detail": "User not found"}, status=404)
 
 
-@api.patch("/users/{user_id}/password", response=UserOutSchema)
+@api.patch("/users/{user_id}/password", response=UserOutSchema, auth=JWTAuth())
 def update_user_password(request, user_id: int, data: UserPasswordUpdateSchema):
     """
     Endpoint to update a user's password.
@@ -117,21 +143,10 @@ def update_user_password(request, user_id: int, data: UserPasswordUpdateSchema):
         return Response({"detail": "User not found"}, status=404)
 
 
-@api.get("/me", response=UserOutSchema)
+@api.get("/me", response=UserOutSchema, auth=JWTAuth())
 def retrieve_authenticated_user(request):
-    jwt_auth = JWTAuthentication()
-    header = jwt_auth.get_header(request)
-    if header is None:
-        raise HttpError(401, "Authentication required")
-
-    raw_token = jwt_auth.get_raw_token(header)
-    if raw_token is None:
-        raise HttpError(401, "Authentication required")
-
-    validated_token = jwt_auth.get_validated_token(raw_token)
-    user = jwt_auth.get_user(validated_token)
-
-    if user and user.is_authenticated:
+    user = request.auth
+    if user and not isinstance(user, AnonymousUser):
         return UserOutSchema.from_orm(user)
     else:
         raise HttpError(401, "Authentication required")

@@ -165,6 +165,5 @@ class PublicUserApiTests(TestCase):
 
         self.client.defaults['HTTP_AUTHORIZATION'] = f'Bearer {token}'
         results = self.client.get(ME_URL)
-        self.assertEqual(results.status_code, 200)  # Expecting 200 OK
-
+        self.assertEqual(results.status_code, 200)
 
