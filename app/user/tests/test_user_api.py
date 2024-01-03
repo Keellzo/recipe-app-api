@@ -6,6 +6,7 @@ from django.test import TestCase, Client
 
 CREATE_USER_URL = '/api/user/users'
 TOKEN_URL = '/api/user/token'
+ME_URL = '/api/user/me'
 
 
 def create_user(**params):
@@ -97,3 +98,73 @@ class PublicUserApiTests(TestCase):
 
         self.assertNotIn('access', results.json())
         self.assertEqual(results.status_code, 400)
+
+    def test_retrieve_user_unauthorized(self):
+        """Test authentication is required for users."""
+        results = self.client.get(ME_URL)
+        self.assertEqual(results.status_code, 401)
+
+    def test_update_user_name(self):
+        """Test updating a user's name."""
+        user_details = {
+            'email': 'test@example.com',
+            'password': 'testpass123',
+            'name': 'Original Name'
+        }
+        user = create_user(**user_details)
+        payload = {'name': 'Updated Name'}
+
+        # Obtain a token for the created user
+        response = self.client.post(TOKEN_URL, user_details, content_type='application/json')
+        token = response.json().get('access')
+        self.assertIsNotNone(token, "Token generation failed, check token endpoint")
+
+        # Attach the token to the headers
+        self.client.defaults['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+        result = self.client.patch(f'/api/user/users/{user.id}', payload, content_type='application/json')
+
+        self.assertEqual(result.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.name, payload['name'])
+
+    def test_update_user_password(self):
+        """Test updating a user's password."""
+        user_details = {
+            'email': 'test@example.com',
+            'password': 'originalpass123',
+            'name': 'Test User'
+        }
+        user = create_user(**user_details)
+        payload = {'password': 'newpass123'}
+
+        # Obtain a token for the created user
+        response = self.client.post(TOKEN_URL, user_details, content_type='application/json')
+        token = response.json().get('access')
+        self.assertIsNotNone(token, "Token generation failed, check token endpoint")
+
+        # Attach the token to the headers
+        self.client.defaults['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+        result = self.client.patch(f'/api/user/users/{user.id}/password', payload, content_type='application/json')
+
+        self.assertEqual(result.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.check_password(payload['password']))
+
+    def test_retrieve_user_authenticated(self):
+        """Test retrieving the current user's data when authenticated."""
+        user_details = {
+            'email': 'test@example.com',
+            'password': 'testpass123',
+            'name': 'Test User'
+        }
+        create_user(**user_details)
+
+        response = self.client.post(TOKEN_URL, user_details, content_type='application/json')
+        token = response.json().get('access')
+        self.assertIsNotNone(token, "Token generation failed, check token endpoint")
+
+        self.client.defaults['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+        results = self.client.get(ME_URL)
+        self.assertEqual(results.status_code, 200)  # Expecting 200 OK
+
+
