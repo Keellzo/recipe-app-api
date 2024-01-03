@@ -18,6 +18,7 @@ api = NinjaAPI(version='1.0.0', urls_namespace='user')
 
 # Utility Functions for JWT
 def create_jwt_token(user_id):
+    """ Generates a JWT token for a given user ID."""
     payload = {
         'user_id': user_id,
         'exp': datetime.utcnow() + timedelta(minutes=30)
@@ -26,6 +27,7 @@ def create_jwt_token(user_id):
 
 
 def decode_jwt_token(token):
+    """  Decodes a JWT token and validates it. """
     try:
         return jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
     except jwt.ExpiredSignatureError:
@@ -36,6 +38,12 @@ def decode_jwt_token(token):
 
 # Custom JWT Authentication class
 class JWTAuth(HttpBearer):
+    """
+        Custom JWT Authentication class that extends the HttpBearer authentication.
+
+        This class decodes and validates the JWT token and retrieves the associated user.
+    """
+
     def authenticate(self, request, token):
         decoded_token = decode_jwt_token(token)
         if decoded_token:
@@ -81,6 +89,7 @@ class UserPasswordUpdateSchema(Schema):
 
 @api.post("/token", response=TokenOutSchema, auth=None)
 def create_token(request, payload: TokenCreateSchema):
+    """ API endpoint to authenticate a user and provide a JWT token. """
     user = authenticate(username=payload.email, password=payload.password)
     if user:
         token = create_jwt_token(user.id)
@@ -145,6 +154,8 @@ def update_user_password(request, user_id: int, data: UserPasswordUpdateSchema):
 
 @api.get("/me", response=UserOutSchema, auth=JWTAuth())
 def retrieve_authenticated_user(request):
+    """ API endpoint to retrieve the currently authenticated user's information."""
+
     user = request.auth
     if user and not isinstance(user, AnonymousUser):
         return UserOutSchema.from_orm(user)
