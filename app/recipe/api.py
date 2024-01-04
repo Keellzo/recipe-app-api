@@ -2,12 +2,13 @@ from typing import List, Optional
 
 from ninja.errors import HttpError
 from ninja.security import HttpBearer
-from ninja import NinjaAPI, Schema
+from ninja import NinjaAPI, Schema, UploadedFile
 from django.contrib.auth import get_user_model
 import jwt
 from django.conf import settings
 
 from core.models import Recipe
+
 
 
 # JWT Authentication class
@@ -117,3 +118,25 @@ def delete_recipe(request, recipe_id: int):
         recipe.delete()
     except Recipe.DoesNotExist:
         raise HttpError(404, 'Recipe not found')
+
+
+@api.post("/{recipe_id}/upload-image", response=RecipeOutSchema)
+def upload_recipe_image(request, recipe_id: int, image: UploadedFile):
+    """Upload an image for a specific recipe."""
+    user = request.auth
+    if user is None:
+        raise HttpError(401, 'Authentication required')
+
+    try:
+        recipe = Recipe.objects.get(id=recipe_id, user=user)
+    except Recipe.DoesNotExist:
+        raise HttpError(404, 'Recipe not found')
+
+    if recipe.image:
+        # Delete the existing image if it exists
+        recipe.image.delete()
+
+    # Save the new image
+    recipe.image.save(image.name, image)
+
+    return RecipeOutSchema.from_orm(recipe)
