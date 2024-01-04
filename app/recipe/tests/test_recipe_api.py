@@ -97,7 +97,8 @@ class PrivateRecipeApiTests(TestCase):
                 'time_minutes': r.time_minutes,
                 'price': float(r.price),  # Convert the price to float
                 'description': r.description,
-                'link': r.link
+                'link': r.link,
+                'image_url': None
             } for r in recipes.order_by('id')
         ]
 
@@ -120,7 +121,8 @@ class PrivateRecipeApiTests(TestCase):
                 'time_minutes': r.time_minutes,
                 'price': float(r.price),
                 'description': r.description,
-                'link': r.link
+                'link': r.link,
+                'image_url': None
             } for r in recipes.order_by('id')
         ]
 
@@ -140,7 +142,8 @@ class PrivateRecipeApiTests(TestCase):
             'time_minutes': recipe.time_minutes,
             'price': float(recipe.price),
             'description': recipe.description,
-            'link': recipe.link
+            'link': recipe.link,
+            'image_url': None
         }
 
         self.assertEqual(response.status_code, 200)

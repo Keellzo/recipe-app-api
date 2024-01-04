@@ -6,9 +6,9 @@ from ninja import NinjaAPI, Schema, UploadedFile
 from django.contrib.auth import get_user_model
 import jwt
 from django.conf import settings
+from pydantic import Field
 
 from core.models import Recipe
-
 
 
 # JWT Authentication class
@@ -41,6 +41,14 @@ class RecipeSchema(Schema):
 
 class RecipeOutSchema(RecipeSchema):
     id: int
+    image_url: Optional[str] = Field(None, alias='image')
+
+    class Config:
+        from_attributes = True
+        computed = ["image_url"]
+
+    def compute_image_url(self, obj):
+        return obj.image.url if obj.image else None
 
 
 class RecipePartialUpdateSchema(Schema):
